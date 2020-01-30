@@ -112,7 +112,7 @@ if __name__ == '__main__':
     >>> taskset -c 0 python profiling_mne_epochs.py
     """
 
-    n_loops = 500
+    n_loops = 2000
     verbose = False
     savedir = os.path.dirname(os.path.realpath(__file__))
     # savedir = '/storage/store/work/hjacobba/data/tests'
@@ -120,18 +120,28 @@ if __name__ == '__main__':
     # Create fake data and save it on disk
     n_channels = 32
     sfreq = 128
-    n_times = np.linspace(10 * sfreq, 8 * 60 * 60 * sfreq, 5, dtype=int)
+    # n_times = [60 * 60 * sfreq]
+    n_times = np.linspace(10 * sfreq, 4 * 60 * 60 * sfreq, 5, dtype=int)
+    win_len_s = 2
+    stride_s = 0.5
 
     durations = dict()
     for i, n in enumerate(n_times):
-        print(f'Timing case where n_times={n} ({i}/{len(n_times)})...')
+        print(f'Timing case where n_times={n} ({i + 1}/{len(n_times)})...')
 
         raw, raw_fname, hdf5_fname = create_mne_raw(
             n_channels, n, sfreq, savedir=savedir)
-        hf = h5py.File(hdf5_fname, 'r')
 
         raw = mne.io.read_raw_fif(raw_fname, preload=False, verbose=None)
-        epochs, start_end_inds = raw_to_epochs(raw, 2, 0.5, preload=False)
+        epochs, start_end_inds = raw_to_epochs(
+            raw, win_len_s, stride_s, preload=False)
+
+        ### NEW SINGLE EPOCH METHOD ###
+        start = time.time()
+        for i in range(n_loops):
+            x0 = epochs.get_single_epoch(0, postprocess=False)
+        duration0 = (time.time() - start) * 1e3 / n_loops
+        assert epochs._data is None
 
         ### CASE 1 ###
         start = time.time()
@@ -154,18 +164,20 @@ if __name__ == '__main__':
         duration3 = (time.time() - start) * 1e3 / n_loops
 
         ### CASE 4 ###
+        hf = h5py.File(hdf5_fname, 'r')
         start = time.time()
         for i in range(n_loops):
             x4 = hf['fake_raw'][:, start_end_inds[0, 0]:start_end_inds[0, 1]]
         duration4 = (time.time() - start) * 1e3 / n_loops
+        hf.close()
 
         durations[n] = {
             'mne: preload=False': duration1,
             'mne: get_data()': duration2,
             'mne: _data[index]': duration3,
-            'hdf5': duration4}
-    
-        hf.close()
+            'hdf5': duration4,
+            'mne: load_single_epoch': duration0
+        }
         
         # Make sure all methods return the same thing
         # tol = 1e-10
@@ -179,3 +191,6 @@ if __name__ == '__main__':
     ax.set_xlabel('Raw length (#samples)')
     ax.set_title('Time taken to get epochs with various methods')
     plt.savefig(os.path.join(savedir, 'timing_results.png'))
+
+    ax.set_ylim(0,5)
+    plt.savefig(os.path.join(savedir, 'timing_results_zoomed_in.png'))
