@@ -105,7 +105,8 @@ class TUHAbnormal(BaseConcatDataset):
     target_name: str
         can be 'pathological', 'gender', or 'age'
     """
-    def __init__(self, path, subject_ids=None, target_name="pathological"):
+    def __init__(self, path, subject_ids=None, target_name="pathological",
+                 preload=False):
         all_file_paths = read_all_file_names(
             path, extension='.edf', key=self._time_key)
         if subject_ids is None:
@@ -114,7 +115,7 @@ class TUHAbnormal(BaseConcatDataset):
         all_base_ds = []
         for subject_id in subject_ids:
             file_path = all_file_paths[subject_id]
-            raw = mne.io.read_raw_edf(file_path)
+            raw = mne.io.read_raw_edf(file_path, preload=preload)
             path_splits = file_path.split("/")
             if "abnormal" in path_splits:
                 pathological = True
@@ -127,12 +128,12 @@ class TUHAbnormal(BaseConcatDataset):
                 assert "eval" in path_splits
                 session = "eval"
             age, gender = _parse_age_and_gender_from_edf_header(file_path)
-            description = pd.DataFrame(
-                [[age, pathological, gender, session, subject_id]],
-                columns=["age", "pathological", "gender",
-                "session", "subject"], index=[subject_id])
+            description = pd.Series(
+                {'age': age, 'pathological': pathological, 'gender': gender,
+                'session': session, 'subject': subject_id}, name=subject_id)
             base_ds = BaseDataset(raw, description, target_name=target_name)
             all_base_ds.append(base_ds)
+
         super().__init__(all_base_ds)
 
     def _time_key(self, file_path):
