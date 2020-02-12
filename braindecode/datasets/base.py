@@ -45,8 +45,21 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.raw)
 
+    @property
+    def description(self):
+        self._description['sfreq'] = self.raw.info['sfreq']
+        self._description['n_channels'] = len(self.raw.ch_names)
+        return self._description
 
-class WindowsDataset(BaseDataset):
+    @description.setter
+    def description(self, desc):
+        if not isinstance(desc, pd.Series):
+            raise TypeError(f'description must be a pandas Series, got '
+                             '{type(desc)}.')
+        self._description = desc
+
+
+class WindowsDataset(Dataset):
     """Applies a windower to a base dataset.
 
     Parameters
@@ -69,6 +82,19 @@ class WindowsDataset(BaseDataset):
 
     def __len__(self):
         return len(self.windows.events)
+
+    @property
+    def description(self):
+        self._description['sfreq'] = self.windows.info['sfreq']
+        self._description['n_channels'] = len(self.windows.ch_names)
+        return self._description
+
+    @description.setter
+    def description(self, desc):
+        if not isinstance(desc, pd.Series):
+            raise TypeError(f'description must be a pandas Series, got '
+                             '{type(desc)}.')
+        self._description = desc
 
 
 class BaseConcatDataset(ConcatDataset):
@@ -114,3 +140,36 @@ class BaseConcatDataset(ConcatDataset):
         return {split_name: BaseConcatDataset(
             [self.datasets[ds_ind] for ds_ind in ds_inds])
             for split_name, ds_inds in split_ids.items()}
+
+    @property
+    def description(self):
+        # Check whether it's a Raw or Windows dataset
+        if set([hasattr(ds, 'raw') for ds in self.datasets]) == {1}:
+            ds_type = 'raw'
+        else:
+            ds_type = 'windows'
+
+        # Find properties inside the datasets
+        fs = [getattr(ds, ds_type).info['sfreq'] for ds in self.datasets]
+        n_channels = [len(getattr(ds, ds_type).ch_names) for ds in self.datasets]
+        n_times = [len(getattr(ds, ds_type).times) for ds in self.datasets]
+
+        if len(set(fs)) > 1:
+            raise ValueError('Recordings have different sampling rates.')
+        if len(set(n_channels)) > 1:
+            raise ValueError('Recordings have different number of channels.')
+        # XXX: Do we want to enforce the following for BaseDatasets?
+        if len(set(n_times)) > 1:
+            raise ValueError('Recordings have different window lengths.')
+
+        self._description['sfreq'] = fs[0]
+        self._description['n_channels'] = n_channels[0]
+        self._description['n_times'] = n_times[0]
+        return self._description
+
+    @description.setter
+    def description(self, new_desc):
+        if not isinstance(new_desc, pd.DataFrame):
+            raise TypeError(f'description must be a pandas DataFrame, got '
+                             '{type(new_desc)}.')
+        self._description = new_desc
