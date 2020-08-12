@@ -124,8 +124,8 @@ def create_windows_from_events(
             # but then would have to change functions overall
             # to deal with varying window sizes hmmhmh
             assert np.all(this_trial_sizes == window_size_samples), (
-                "All trial sizes should be the same if you do not supply"
-                "a window size.")
+                'All trial sizes should be the same if you do not supply '
+                'a window size.')
 
         description = events[:, -1]
 
